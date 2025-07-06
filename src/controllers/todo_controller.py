@@ -10,7 +10,7 @@ def fetch_todos_controller(query):
     limit = query["limit"]
     search = query.get("search", "").lower()
 
-    todo_query = Todo.query
+    todo_query = db.session.query(Todo)
 
     if search:
         todo_query = todo_query.filter(Todo.task.ilike(f"%{search}%"))
@@ -36,7 +36,7 @@ def create_todo_controller(data):
 
 
 def fetch_todo_controller(todo_id):
-    todo = Todo.query.get(todo_id)
+    todo = db.session.get(Todo, todo_id)
 
     if not todo:
         return error_response("Todo not found")
@@ -46,7 +46,7 @@ def fetch_todo_controller(todo_id):
 
 def update_todo_controller(todo_id, data):
 
-    todo = Todo.query.get(todo_id)
+    todo = db.session.get(Todo, todo_id)
 
     if not todo:
         return error_response("Todo not found")
@@ -60,7 +60,7 @@ def update_todo_controller(todo_id, data):
 
 
 def delete_todo_controller(todo_id):
-    todo = Todo.query.get(todo_id)
+    todo = db.session.get(Todo, todo_id)
 
     if not todo:
         return error_response("Todo not found")
@@ -68,4 +68,4 @@ def delete_todo_controller(todo_id):
     db.session.delete(todo)
     db.session.commit()
 
-    return success_response({"message": "Todo deleted successfully"}, 204)
+    return success_response({"message": "Todo deleted successfully"})

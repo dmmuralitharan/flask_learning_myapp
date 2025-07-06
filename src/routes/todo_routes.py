@@ -1,7 +1,8 @@
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, request
+from src.extensions import db
 from flask.views import MethodView
-from marshmallow import ValidationError
 from src.dtos.todo_dtos import TodoCreateDTO, TodoQueryParams, TodoUpdateDTO
+from src.models.todo_model import Todo
 from src.utils.request_validation import (
     validate_request_body,
     validate_request_query_params,
@@ -25,61 +26,64 @@ class TodoAPI(MethodView):
             limit = query["limit"]
             search = query.get("search", "").lower()
 
-            print(limit, search)
+            todo_query = Todo.query
 
-            todos = [
-                {"id": tid, **task}
-                for tid, task in TODOS.items()
-                if search in task["task"].lower()
-            ][:limit]
+            if search:
+                todo_query = todo_query.filter(Todo.task.ilike(f"%{search}%"))
+
+            todos = todo_query.limit(limit).all()
+
+            data = [todo.to_dict() for todo in todos]
+
 
             return success_response(
-                data=todos,
-                message=f"{len(todos)} todos fetched successfully",
+                data=data,
+                message=f"{len(data)} todos fetched successfully",
             )
 
-        todo = TODOS.get(todo_id)
+        todo = Todo.query.get(todo_id)
 
         if not todo:
             return error_response("Todo not found")
 
-        return success_response({"id": todo_id, **todo})
+        return success_response(todo.to_dict())
 
     @validate_request_body(TodoCreateDTO)
     def post(self):
-        data = request.get_json()
+        data = request.validated_body
 
-        new_id = max(TODOS.keys()) + 1 if TODOS else 1
+        new_todo = Todo(task=data["task"], completed=False)
 
-        TODOS[new_id] = {"task": data["task"], "completed": False}
+        db.session.add(new_todo)
+        db.session.commit()
 
-        return success_response(
-            {
-                "id": new_id,
-                "task": data["task"],
-                "completed": TODOS[new_id]["completed"],
-            }
-        )
+        return success_response(new_todo.to_dict(), "Todo Created")
 
     @validate_request_body(TodoUpdateDTO)
     def put(self, todo_id):
-        data = request.get_json()
+        data = request.validated_body
 
-        if todo_id not in TODOS:
+        todo = Todo.query.get(todo_id)
+
+        if not todo:
             return error_response("Todo not found")
 
-        TODOS[todo_id]["task"] = data["task"]
-        TODOS[todo_id]["completed"] = data["completed"]
+        todo.task = data.get("task", todo.task)
+        todo.completed = data.get("completed", todo.completed)
 
-        return success_response(
-            {"id": todo_id, "task": data["task"], "completed": data["completed"]}
-        )
+        db.session.commit()
+
+        return success_response(todo.to_dict(), "Todo Updated")
 
     def delete(self, todo_id):
-        if todo_id not in TODOS:
-            return error_response("Todo not found")
 
-        del TODOS[todo_id]
+        todo = Todo.query.get(todo_id)
+
+        if not todo:
+            return error_response("Todo not found")
+        
+        db.session.delete(todo)
+        db.session.commit()
 
         return success_response({"message": "Todo deleted successfully"}, 204)
 

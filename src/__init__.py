@@ -1,48 +1,79 @@
 import os
+import logging
 from dotenv import load_dotenv
-from flask import Flask
+from flask import Flask, current_app, send_from_directory
+from flask_cors import CORS
+
+from src.extensions import db, migrate
+from src.error_handlers import register_error_handlers
+from src.routes import register_blueprints
+from src.cli import register_commands
 
 
 def create_app():
 
-    load_dotenv()
+    # Config: Logging
+    logging.basicConfig(
+        level=logging.DEBUG, format="%(asctime)s | %(levelname)s | %(message)s"
+    )
 
+    # Config: App
     app = Flask(__name__)
 
-    # env
-    env = os.environ.get("FLASK_ENV", "development")
+    # Config: CORS
+    CORS(app)
 
-    if env == "production":
-        from .config import ProductionConfig
+    # Config: ENV
+    load_dotenv()
 
-        app.config.from_object(ProductionConfig)
-    elif env == "development":
-        from .config import DevelopmentConfig
+    try:
+        env = os.environ.get("FLASK_ENV", "development")
 
-        app.config.from_object(DevelopmentConfig)
+        if env == "production":
+            from .config import ProductionConfig
 
-    # routes
-    from .routes.todo_routes import todo_bp
+            app.config.from_object(ProductionConfig)
+        elif env == "development":
+            from .config import DevelopmentConfig
 
-    app.register_blueprint(todo_bp)
+            app.config.from_object(DevelopmentConfig)
 
-    # global error handles
-    @app.errorhandler(404)
-    def not_found(e):
-        from .utils.response import error_response
+        logging.info("ENV Configured Successfully.")
 
-        return error_response("Resource not found", 404)
+    except Exception as e:
+        logging.error(f"DB Initialize Failed, {e}")
 
-    @app.errorhandler(500)
-    def internal_error(e):
-        from .utils.response import error_response
+    # Config: Extensions
+    try:
+        db.init_app(app)
+        logging.info("DB Initialized Successfully.")
+    except Exception as e:
+        logging.error(f"DB Initialize Failed, {e}")
 
-        return error_response("Internal Server Error", 500)
+    try:
+        migrate.init_app(app, db)
+        logging.info("Migrate Initialized Successfully.")
+    except Exception as e:
+        logging.error(f"Migrate Initialize Failed, {e}")
 
-    @app.errorhandler(400)
-    def bad_request(e):
-        from .utils.response import error_response
+    # Config: Blueprints
+    try:
 
-        return error_response("Bad Request", 400)
+        @app.route("/src/assets/<path:filename>")
+        def serve_static(filename):
+            return send_from_directory(
+                current_app.config["SERVE_STATIC_FOLDER"], filename
+            )
+
+        register_blueprints(app)
+        logging.info("Routes Initialized Successfully.")
+    except Exception as e:
+        logging.error(f"Routes Initialize Failed ,{e}")
+
+    # Config: Error handlers
+    register_error_handlers(app)
+
+    # Config: CLI Commands
+    register_commands(app)
 
     return app

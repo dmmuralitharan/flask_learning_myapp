@@ -3,6 +3,7 @@ import logging
 from dotenv import load_dotenv
 from flask import Flask, current_app, send_from_directory
 from flask_cors import CORS
+from flask_smorest import Api
 
 from src.extensions import db, migrate
 from src.error_handlers import register_error_handlers
@@ -64,11 +65,13 @@ def create_app():
             return send_from_directory(
                 current_app.config["SERVE_STATIC_FOLDER"], filename
             )
-
-        register_blueprints(app)
+        
+        api = Api(app)
+        register_blueprints(api)
         logging.info("Routes Initialized Successfully.")
     except Exception as e:
         logging.error(f"Routes Initialize Failed ,{e}")
+
 
     # Config: Error handlers
     register_error_handlers(app)

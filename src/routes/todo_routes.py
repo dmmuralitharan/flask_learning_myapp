@@ -2,6 +2,10 @@ from flask import Blueprint, jsonify, request
 from flask.views import MethodView
 from marshmallow import ValidationError
 from src.dtos.todo_dtos import TodoCreateDTO, TodoQueryParams, TodoUpdateDTO
+from src.utils.request_validation import (
+    validate_request_body,
+    validate_request_query_params,
+)
 from src.utils.response import success_response, error_response
 
 TODOS = {
@@ -13,22 +17,19 @@ todo_bp = Blueprint("todo_bp", __name__, url_prefix="/api/v1/todos")
 
 
 class TodoAPI(MethodView):
+    @validate_request_query_params(TodoQueryParams)
     def get(self, todo_id=None):
         if todo_id is None:
 
-            try:
-                query_params_validated = TodoQueryParams().load(request.args)
-            except ValidationError as err:
-                return error_response(f"Params Error : {err.messages}")
-
-            limit = query_params_validated["limit"]
-            search = query_params_validated.get("search", "").lower()
+            query = request.validated_query
+            limit = query["limit"]
+            search = query.get("search", "").lower()
 
             print(limit, search)
 
             todos = [
                 {"id": tid, **task}
-                for tid, task in TODOS.items() 
+                for tid, task in TODOS.items()
                 if search in task["task"].lower()
             ][:limit]
 
@@ -44,13 +45,9 @@ class TodoAPI(MethodView):
 
         return success_response({"id": todo_id, **todo})
 
+    @validate_request_body(TodoCreateDTO)
     def post(self):
         data = request.get_json()
-
-        try:
-            validated = TodoCreateDTO().load(data)
-        except ValidationError as err:
-            return error_response(f"Validation failed : {err.messages}", 400)
 
         new_id = max(TODOS.keys()) + 1 if TODOS else 1
 
@@ -64,16 +61,12 @@ class TodoAPI(MethodView):
             }
         )
 
+    @validate_request_body(TodoUpdateDTO)
     def put(self, todo_id):
         data = request.get_json()
 
         if todo_id not in TODOS:
             return error_response("Todo not found")
-
-        try:
-            validated = TodoUpdateDTO().load(data)
-        except ValidationError as err:
-            return error_response(f"Validation failed : {err.messages}", 400)
 
         TODOS[todo_id]["task"] = data["task"]
         TODOS[todo_id]["completed"] = data["completed"]

@@ -1,43 +1,42 @@
-from flask import Blueprint
+from flask_smorest import Blueprint
 from flask.views import MethodView
 from src.controllers.todo_controller import (
     create_todo_controller,
     delete_todo_controller,
+    fetch_todo_controller,
     fetch_todos_controller,
     update_todo_controller,
 )
 from src.dtos.todo_dtos import TodoCreateDTO, TodoQueryParams, TodoUpdateDTO
-from src.utils.request_validation import (
-    validate_request_body,
-    validate_request_query_params,
+
+
+todo_bp = Blueprint(
+    "Todo",
+    "todo",
+    url_prefix="/api/v1/todos",
+    description="Operations related to todos",
 )
 
 
-todo_bp = Blueprint("todo_bp", __name__, url_prefix="/api/v1/todos")
-
-
+@todo_bp.route("/")
 class TodoAPI(MethodView):
-    @validate_request_query_params(TodoQueryParams)
-    def get(self, todo_id=None):
-        return fetch_todos_controller(todo_id)
+    @todo_bp.arguments(TodoQueryParams, location="query")
+    def get(self, args):
+        return fetch_todos_controller(query=args)
 
-    @validate_request_body(TodoCreateDTO)
-    def post(self):
-        return create_todo_controller()
+    @todo_bp.arguments(TodoCreateDTO)
+    def post(self, json_data):
+        return create_todo_controller(json_data)
 
-    @validate_request_body(TodoUpdateDTO)
-    def put(self, todo_id):
-        return update_todo_controller(todo_id)
+
+@todo_bp.route("/<int:todo_id>")
+class TodoWithIDRouteAPI(MethodView):
+    def get(self, todo_id):
+        return fetch_todo_controller(todo_id)
+
+    @todo_bp.arguments(TodoUpdateDTO)
+    def put(self, json_data, todo_id):
+        return update_todo_controller(todo_id, json_data)
 
     def delete(self, todo_id):
         return delete_todo_controller(todo_id)
-
-
-todo_view = TodoAPI.as_view("todo_api")
-todo_bp.add_url_rule(
-    "/", defaults={"todo_id": None}, view_func=todo_view, methods=["GET"]
-)
-todo_bp.add_url_rule("/", view_func=todo_view, methods=["POST"])
-todo_bp.add_url_rule(
-    "/<int:todo_id>", view_func=todo_view, methods=["GET", "PUT", "DELETE"]
-)

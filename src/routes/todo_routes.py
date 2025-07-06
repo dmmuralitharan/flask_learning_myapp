@@ -1,8 +1,13 @@
 from flask import Blueprint, jsonify, request
 from flask.views import MethodView
+from marshmallow import ValidationError
+from src.dtos.todo_dtos import TodoCreateDTO, TodoQueryParams, TodoUpdateDTO
 from src.utils.response import success_response, error_response
 
-TODOS = {1: {"task": "Learn Flask"}, 2: {"task": "Use MethodView"}}
+TODOS = {
+    1: {"task": "Learn Flask", "completed": False},
+    2: {"task": "Use MethodView", "completed": False},
+}
 
 todo_bp = Blueprint("todo_bp", __name__, url_prefix="/api/v1/todos")
 
@@ -10,9 +15,26 @@ todo_bp = Blueprint("todo_bp", __name__, url_prefix="/api/v1/todos")
 class TodoAPI(MethodView):
     def get(self, todo_id=None):
         if todo_id is None:
+
+            try:
+                query_params_validated = TodoQueryParams().load(request.args)
+            except ValidationError as err:
+                return error_response(f"Params Error : {err.messages}")
+
+            limit = query_params_validated["limit"]
+            search = query_params_validated.get("search", "").lower()
+
+            print(limit, search)
+
+            todos = [
+                {"id": tid, **task}
+                for tid, task in TODOS.items() 
+                if search in task["task"].lower()
+            ][:limit]
+
             return success_response(
-                data=[{"id": tid, **task} for tid, task in TODOS.items()],
-                message="All todos fetched successfully",
+                data=todos,
+                message=f"{len(todos)} todos fetched successfully",
             )
 
         todo = TODOS.get(todo_id)
@@ -25,14 +47,22 @@ class TodoAPI(MethodView):
     def post(self):
         data = request.get_json()
 
-        if not data or "task" not in data:
-            return error_response("Task is required")
+        try:
+            validated = TodoCreateDTO().load(data)
+        except ValidationError as err:
+            return error_response(f"Validation failed : {err.messages}", 400)
 
         new_id = max(TODOS.keys()) + 1 if TODOS else 1
 
-        TODOS[new_id] = {"task": data["task"]}
+        TODOS[new_id] = {"task": data["task"], "completed": False}
 
-        return success_response({"id": new_id, "task": data["task"]})
+        return success_response(
+            {
+                "id": new_id,
+                "task": data["task"],
+                "completed": TODOS[new_id]["completed"],
+            }
+        )
 
     def put(self, todo_id):
         data = request.get_json()
@@ -40,12 +70,17 @@ class TodoAPI(MethodView):
         if todo_id not in TODOS:
             return error_response("Todo not found")
 
-        if not data or "task" not in data:
-            return error_response("Task is required")
+        try:
+            validated = TodoUpdateDTO().load(data)
+        except ValidationError as err:
+            return error_response(f"Validation failed : {err.messages}", 400)
 
         TODOS[todo_id]["task"] = data["task"]
+        TODOS[todo_id]["completed"] = data["completed"]
 
-        return success_response({"id": todo_id, "task": data["task"]})
+        return success_response(
+            {"id": todo_id, "task": data["task"], "completed": data["completed"]}
+        )
 
     def delete(self, todo_id):
         if todo_id not in TODOS:
